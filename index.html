@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CUBE // NUMBER ROOM SIMULATOR</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #05070a;
+  color: #d8e5ef;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- TOP ---------- */
+
+header {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  border-bottom: 1px solid #1b2831;
+  background: rgba(5,8,11,.96);
+  z-index: 10;
+}
+
+.logo {
+  font-size: 14px;
+  letter-spacing: 4px;
+}
+
+.logo span {
+  opacity: .45;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+input {
+  width: 230px;
+  padding: 11px 13px;
+  background: #0b1116;
+  border: 1px solid #263640;
+  color: #dcebf5;
+  outline: none;
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+
+button {
+  padding: 11px 16px;
+  background: #111a21;
+  color: #dcebf5;
+  border: 1px solid #31414c;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+button:hover {
+  background: #18252d;
+}
+
+/* ---------- MAIN ---------- */
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 330px;
+  min-height: 0;
+}
+
+#scene {
+  position: relative;
+  overflow: hidden;
+  perspective: 1000px;
+  background:
+    radial-gradient(circle at center,
+      rgba(25,47,59,.32),
+      transparent 48%),
+    #05070a;
+}
+
+/* ---------- CUBE ---------- */
+
+.cube-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  height: 280px;
+  transform-style: preserve-3d;
+  transform:
+    translate(-50%,-50%)
+    rotateX(-23deg)
+    rotateY(34deg);
+  transition: transform .5s ease;
+}
+
+.face {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border: 1px solid rgba(120,170,190,.35);
+  background:
+    linear-gradient(rgba(20,45,56,.14), rgba(4,9,13,.55)),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 55px,
+      rgba(100,150,170,.08) 56px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 55px,
+      rgba(100,150,170,.08) 56px
+    );
+  box-shadow:
+    inset 0 0 35px rgba(0,0,0,.8);
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  grid-template-rows: repeat(3,1fr);
+  padding: 14px;
+}
+
+.front {
+  transform: translateZ(140px);
+}
+
+.back {
+  transform: rotateY(180deg) translateZ(140px);
+}
+
+.right {
+  transform: rotateY(90deg) translateZ(140px);
+}
+
+.left {
+  transform: rotateY(-90deg) translateZ(140px);
+}
+
+.top {
+  transform: rotateX(90deg) translateZ(140px);
+}
+
+.bottom {
+  transform: rotateX(-90deg) translateZ(140px);
+}
+
+/* ---------- ROOMS ---------- */
+
+.room {
+  margin: 5px;
+  border: 1px solid rgba(130,170,185,.25);
+  background: rgba(7,13,18,.78);
+  position: relative;
+  cursor: pointer;
+  transition: all .25s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.room:hover {
+  background: rgba(35,65,78,.55);
+  border-color: rgba(160,210,225,.75);
+}
+
+.room .num {
+  opacity: .7;
+}
+
+.room.entry {
+  border-color: #e5e5e5;
+  box-shadow: 0 0 14px rgba(220,230,240,.25);
+}
+
+.room.visited {
+  background: rgba(55,100,116,.55);
+}
+
+.room.prime {
+  border-color: rgba(220,180,100,.8);
+}
+
+.room.composite {
+  border-color: rgba(100,155,180,.45);
+}
+
+.room.current {
+  background: rgba(120,150,160,.35);
+  box-shadow:
+    0 0 18px rgba(170,210,220,.45),
+    inset 0 0 20px rgba(170,210,220,.12);
+}
+
+.room::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  bottom: 5px;
+  right: 5px;
+  border-radius: 50%;
+  background: #344952;
+}
+
+.room.prime::after {
+  background: #d7b36d;
+}
+
+/* ---------- SIDE PANEL ---------- */
+
+aside {
+  border-left: 1px solid #1b2831;
+  background: #080d11;
+  padding: 20px;
+  overflow: auto;
+}
+
+.panel-title {
+  font-size: 10px;
+  letter-spacing: 3px;
+  opacity: .45;
+  margin-bottom: 9px;
+}
+
+.big-code {
+  font-family: monospace;
+  font-size: 27px;
+  letter-spacing: 5px;
+  margin-bottom: 22px;
+}
+
+.stat {
+  border-top: 1px solid #18242c;
+  padding: 13px 0;
+}
+
+.label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  opacity: .45;
+}
+
+.value {
+  margin-top: 5px;
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.factor {
+  color: #bcd4df;
+}
+
+.factor strong {
+  color: #e3c27a;
+}
+
+.route {
+  margin-top: 20px;
+}
+
+.route-list {
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.8;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.route-item {
+  border-bottom: 1px solid #101a20;
+  padding: 4px 0;
+}
+
+.route-item.active {
+  color: #fff;
+}
+
+/* ---------- BOTTOM ---------- */
+
+footer {
+  position: absolute;
+  bottom: 15px;
+  left: 20px;
+  font-family: monospace;
+  font-size: 10px;
+  opacity: .35;
+  letter-spacing: 1px;
+}
+
+/* ---------- MOBILE ---------- */
+
+@media(max-width:800px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  aside {
+    position: absolute;
+    right: 0;
+    top: 72px;
+    bottom: 0;
+    width: 280px;
+    transform: translateX(100%);
+    transition: transform .3s;
+    z-index: 20;
+  }
+
+  aside.open {
+    transform: translateX(0);
+  }
+
+  .cube-wrap {
+    transform:
+      translate(-50%,-50%)
+      scale(.72)
+      rotateX(-23deg)
+      rotateY(34deg);
+  }
+
+  header {
+    padding: 0 10px;
+  }
+
+  input {
+    width: 170px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+
+  <div class="logo">
+    CUBE <span>// NUMBER ROOM SIMULATOR</span>
+  </div>
+
+  <div class="controls">
+
+    <input
+      id="codeInput"
+      value="476 804 539"
+      spellcheck="false"
+      aria-label="Código"
+    >
+
+    <button onclick="generate()">
+      GENERATE
+    </button>
+
+    <button onclick="togglePanel()">
+      INFO
+    </button>
+
+  </div>
+
+</header>
+
+<main>
+
+<section id="scene">
+
+  <div class="cube-wrap" id="cube">
+
+    <div class="face front" id="front"></div>
+    <div class="face back" id="back"></div>
+    <div class="face right" id="right"></div>
+    <div class="face left" id="left"></div>
+    <div class="face top" id="top"></div>
+    <div class="face bottom" id="bottom"></div>
+
+  </div>
+
+  <footer>
+    NUMERIC STATE MACHINE // FACTORIZATION // ROOM GRAPH
+  </footer>
+
+</section>
+
+<aside id="panel">
+
+  <div class="panel-title">
+    INPUT CODE
+  </div>
+
+  <div class="big-code" id="displayCode">
+    476 804 539
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      ROOM
+    </div>
+
+    <div class="value" id="roomNumber">
+      476
+    </div>
+
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      TYPE
+    </div>
+
+    <div class="value" id="roomType">
+      COMPOSITE
+    </div>
+
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      PRIME?
+    </div>
+
+    <div class="value" id="prime">
+      NO
+    </div>
+
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      FACTORIZATION
+    </div>
+
+    <div class="value factor" id="factorization">
+      2² × 7 × 17
+    </div>
+
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      DIVISORS
+    </div>
+
+    <div class="value" id="divisors">
+      1, 2, 4, 7...
+    </div>
+
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      DIGITAL ROOT
+    </div>
+
+    <div class="value" id="root">
+      8
+    </div>
+
+  </div>
+
+  <div class="stat">
+
+    <div class="label">
+      ROOM INDEX
+    </div>
+
+    <div class="value" id="index">
+      01
+    </div>
+
+  </div>
+
+  <div class="route">
+
+    <div class="panel-title">
+      ROOM TRAVERSAL
+    </div>
+
+    <div class="route-list" id="routeList"></div>
+
+  </div>
+
+</aside>
+
+</main>
+
+<script>
+
+/* =========================================================
+   CUBE NUMBER ROOM SIMULATOR
+   ========================================================= */
+
+/*
+  El código se interpreta como:
+
+  476 804 539
+
+  Cada número = una habitación/estado.
+
+  La factorización NO se utiliza como una afirmación
+  narrativa de la película: aquí funciona como regla
+  matemática para construir el grafo.
+*/
+
+
+let numbers = [];
+let rooms = [];
+let currentRoom = 0;
+let route = [];
+
+
+/* ---------- PRIME ---------- */
+
+function isPrime(n) {
+
+  if (n < 2) return false;
+
+  if (n === 2) return true;
+
+  if (n % 2 === 0) return false;
+
+  for (let i = 3; i * i <= n; i += 2) {
+    if (n % i === 0) return false;
+  }
+
+  return true;
+}
+
+
+/* ---------- FACTORIZATION ---------- */
+
+function factorize(n) {
+
+  const factors = [];
+  let x = n;
+
+  for (let p = 2; p * p <= x; p++) {
+
+    while (x % p === 0) {
+      factors.push(p);
+      x /= p;
+    }
+
+  }
+
+  if (x > 1) {
+    factors.push(x);
+  }
+
+  return factors;
+}
+
+
+/* ---------- FACTOR STRING ---------- */
+
+function factorString(n) {
+
+  const factors = factorize(n);
+
+  if (factors.length === 1) {
+    return `${factors[0]}`;
+  }
+
+  const groups = {};
+
+  factors.forEach(f => {
+    groups[f] = (groups[f] || 0) + 1;
+  });
+
+  return Object.entries(groups)
+    .map(([p, e]) => {
+
+      if (e === 1) {
+        return p;
+      }
+
+      return `${p}<sup>${e}</sup>`;
+
+    })
+    .join(" × ");
+}
+
+
+/* ---------- DIVISORS ---------- */
+
+function divisors(n) {
+
+  const result = [];
+
+  for (let i = 1; i <= Math.sqrt(n); i++) {
+
+    if (n % i === 0) {
+
+      result.push(i);
+
+      if (i !== n / i) {
+        result.push(n / i);
+      }
+
+    }
+
+  }
+
+  return result.sort((a,b) => a-b);
+}
+
+
+/* ---------- DIGITAL ROOT ---------- */
+
+function digitalRoot(n) {
+
+  while (n > 9) {
+
+    n = String(n)
+      .split("")
+      .reduce((a,b) => a + Number(b), 0);
+
+  }
+
+  return n;
+}
+
+
+/* ---------- ROOM SIGNATURE ---------- */
+
+function roomSignature(n) {
+
+  const factors = factorize(n);
+
+  return {
+
+    number: n,
+
+    prime: isPrime(n),
+
+    factors,
+
+    divisors: divisors(n),
+
+    root: digitalRoot(n),
+
+    complexity: factors.length,
+
+    parity: n % 2 === 0 ? "EVEN" : "ODD"
+
+  };
+
+}
+
+
+/* ---------- BUILD ROOM ---------- */
+
+function createRoomElement(number, index) {
+
+  const room = document.createElement("div");
+
+  room.className =
+    "room " +
+    (isPrime(number) ? "prime" : "composite");
+
+  room.dataset.index = index;
+
+  room.innerHTML = `
+    <span class="num">${number}</span>
+  `;
+
+  room.addEventListener("click", () => {
+
+    currentRoom = index;
+
+    showRoom(index);
+
+    markVisited(index);
+
+  });
+
+  return room;
+
+}
+
+
+/* ---------- POPULATE CUBE ---------- */
+
+function populateCube() {
+
+  const faces = [
+    document.getElementById("front"),
+    document.getElementById("back"),
+    document.getElementById("right"),
+    document.getElementById("left"),
+    document.getElementById("top"),
+    document.getElementById("bottom")
+  ];
+
+  faces.forEach(face => face.innerHTML = "");
+
+  /*
+    Generamos 54 celdas:
+
+    6 caras × 9 habitaciones.
+
+    El código inicial alimenta las primeras
+    habitaciones y luego las propiedades
+    matemáticas generan estados derivados.
+  */
+
+  const generated = [];
+
+  numbers.forEach(n => {
+
+    generated.push(n);
+
+    factorize(n).forEach(f => {
+      generated.push(f);
+    });
+
+    divisors(n)
+      .filter(d => d > 1 && d < n)
+      .slice(0, 5)
+      .forEach(d => generated.push(d));
+
+  });
+
+  /*
+    Rellenamos las 54 posiciones.
+  */
+
+  let index = 0;
+
+  for (let face = 0; face < faces.length; face++) {
+
+    for (let cell = 0; cell < 9; cell++) {
+
+      let n;
+
+      if (generated.length) {
+
+        n = generated[index % generated.length];
+
+      } else {
+
+        n = index + 1;
+
+      }
+
+      const el = createRoomElement(n, index);
+
+      faces[face].appendChild(el);
+
+      rooms.push({
+        number: n,
+        face,
+        cell,
+        element: el
+      });
+
+      index++;
+
+    }
+
+  }
+
+}
+
+
+/* ---------- GENERATE ---------- */
+
+function generate() {
+
+  const raw =
+    document.getElementById("codeInput")
+      .value
+      .trim();
+
+  numbers = raw
+    .split(/[\s,;]+/)
+    .map(Number)
+    .filter(n => Number.isInteger(n) && n > 0);
+
+  if (!numbers.length) {
+
+    alert("Introduce números válidos.");
+
+    return;
+
+  }
+
+  rooms = [];
+
+  currentRoom = 0;
+
+  route = [];
+
+  document.getElementById("displayCode")
+    .textContent = numbers.join(" ");
+
+  populateCube();
+
+  showRoom(0);
+
+  buildRoute();
+
+}
+
+
+/* ---------- SHOW ROOM ---------- */
+
+function showRoom(index) {
+
+  if (!rooms[index]) return;
+
+  const n = rooms[index].number;
+
+  const data = roomSignature(n);
+
+  document.getElementById("roomNumber")
+    .textContent = n;
+
+  document.getElementById("roomType")
+    .textContent =
+      data.prime ? "PRIME" : "COMPOSITE";
+
+  document.getElementById("prime")
+    .textContent =
+      data.prime ? "YES" : "NO";
+
+  document.getElementById("factorization")
+    .innerHTML =
+      factorString(n);
+
+  document.getElementById("divisors")
+    .textContent =
+      data.divisors.join(", ");
+
+  document.getElementById("root")
+    .textContent =
+      data.root;
+
+  document.getElementById("index")
+    .textContent =
+      String(index + 1).padStart(2,"0");
+
+  document.querySelectorAll(".room")
+    .forEach(r => r.classList.remove("current"));
+
+  rooms[index].element
+    .classList.add("current");
+
+}
+
+
+/* ---------- VISITED ---------- */
+
+function markVisited(index) {
+
+  if (!route.includes(index)) {
+
+    route.push(index);
+
+  }
+
+  rooms[index].element
+    .classList.add("visited");
+
+  buildRoute();
+
+}
+
+
+/* ---------- ROOM TRAVERSAL ---------- */
+
+function buildRoute() {
+
+  const list =
+    document.getElementById("routeList");
+
+  list.innerHTML = "";
+
+  /*
+    El recorrido se determina por:
+
+    digital root → siguiente habitación
+    cantidad de factores → salto
+    paridad → dirección
+  */
+
+  let pos = 0;
+
+  const visited = new Set();
+
+  for (let step = 0; step < 18; step++) {
+
+    if (visited.has(pos)) break;
+
+    visited.add(pos);
+
+    const room = rooms[pos];
+
+    if (!room) break;
+
+    const data =
+      roomSignature(room.number);
+
+    const item =
+      document.createElement("div");
+
+    item.className = "route-item";
+
+    item.innerHTML =
+      `${String(step + 1).padStart(2,"0")} `
+      + `R${String(pos + 1).padStart(2,"0")} `
+      + `→ ${room.number} `
+      + `[${data.prime ? "PRIME" : "COMPOSITE"}]`;
+
+    list.appendChild(item);
+
+    /*
+      Determinamos el salto.
+
+      root:
+      1..9
+
+      complexity:
+      cantidad de factores primos
+
+      La combinación produce el siguiente
+      índice de habitación.
+    */
+
+    const jump =
+      data.root +
+      data.complexity;
+
+    if (data.parity === "EVEN") {
+
+      pos =
+        (pos + jump) % rooms.length;
+
+    } else {
+
+      pos =
+        (pos - jump + rooms.length)
+        % rooms.length;
+
+    }
+
+  }
+
+}
+
+
+/* ---------- ROTATION ---------- */
+
+let rotX = -23;
+let rotY = 34;
+
+const cube =
+  document.getElementById("cube");
+
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+
+document.getElementById("scene")
+.addEventListener("pointerdown", e => {
+
+  dragging = true;
+
+  lastX = e.clientX;
+  lastY = e.clientY;
+
+});
+
+window.addEventListener("pointerup", () => {
+
+  dragging = false;
+
+});
+
+window.addEventListener("pointermove", e => {
+
+  if (!dragging) return;
+
+  const dx =
+    e.clientX - lastX;
+
+  const dy =
+    e.clientY - lastY;
+
+  rotY += dx * .45;
+
+  rotX -= dy * .45;
+
+  cube.style.transform =
+    `translate(-50%,-50%)
+     rotateX(${rotX}deg)
+     rotateY(${rotY}deg)`;
+
+  lastX = e.clientX;
+  lastY = e.clientY;
+
+});
+
+
+/* ---------- PANEL ---------- */
+
+function togglePanel() {
+
+  document
+    .getElementById("panel")
+    .classList.toggle("open");
+
+}
+
+
+/* ---------- KEYBOARD ---------- */
+
+document
+.getElementById("codeInput")
+.addEventListener("keydown", e => {
+
+  if (e.key === "Enter") {
+
+    generate();
+
+  }
+
+});
+
+
+/* ---------- INITIAL STATE ---------- */
+
+generate();
+
+</script>
+
+</body>
+</html>
