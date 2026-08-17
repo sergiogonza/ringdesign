@@ -71,9 +71,6 @@ function majority(mask,w,h,passes=1){
 }
 
 function enclosedBodyMask(lum, alpha, w, h, bgLum) {
-  // For JPG/opaque artwork we do NOT use every dark line as a cutout.
-  // Flood only the exterior background from the canvas border. Everything enclosed by
-  // the outer drawing/frame becomes one continuous printable body.
   const background = new Uint8Array(w*h);
   const tolerance = Math.max(.035, Math.min(.13, Math.abs(bgLum-.5)*.08+.04));
   for(let i=0;i<background.length;i++){
@@ -124,7 +121,7 @@ export function analyzeRasterImage(img,maxSide=460){
   let minX=w,maxX=-1,minY=h,maxY=-1;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(mask[y*w+x]){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
   if(maxX<minX){minX=0;minY=0;maxX=w-1;maxY=h-1;mask.fill(1)}
-  const pad=3;minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);
+  const pad=4;minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);
   const cw=maxX-minX+1,ch=maxY-minY+1,croppedMask=new Uint8Array(cw*ch),croppedLum=new Float32Array(cw*ch);
   for(let y=0;y<ch;y++)for(let x=0;x<cw;x++){
     const src=(y+minY)*w+x+minX;
@@ -132,7 +129,11 @@ export function analyzeRasterImage(img,maxSide=460){
     croppedLum[y*cw+x]=lum[src];
   }
 
-  // Fine field preserves pen/engraving lines; coarse field removes broad lighting gradients.
+  const maskFloat=new Float32Array(croppedMask.length);
+  for(let i=0;i<croppedMask.length;i++)maskFloat[i]=croppedMask[i];
+  // Soft silhouette drives sub-pixel contour projection in the mesh engine.
+  const silhouette=blur(maskFloat,cw,ch,2,2);
+
   const fine=blur(croppedLum,cw,ch,1,1);
   const smooth=blur(fine,cw,ch,2,2);
   const coarse=blur(smooth,cw,ch,2,3);
@@ -140,12 +141,11 @@ export function analyzeRasterImage(img,maxSide=460){
   for(let y=1;y<ch-1;y++)for(let x=1;x<cw-1;x++){
     const gx=sample(fine,cw,ch,x+1,y)-sample(fine,cw,ch,x-1,y);
     const gy=sample(fine,cw,ch,x,y+1)-sample(fine,cw,ch,x,y-1);
-    edge[y*cw+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)*3.6);
-    // Dark local linework is stronger than broad shadows, producing a more natural engraving.
-    detail[y*cw+x]=Math.max(0,Math.min(1,(coarse[y*cw+x]-fine[y*cw+x])*5.2));
+    edge[y*cw+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)*3.4);
+    detail[y*cw+x]=Math.max(0,Math.min(1,(coarse[y*cw+x]-fine[y*cw+x])*4.8));
   }
 
-  return{w:cw,h:ch,aspect:cw/ch,luminance:smooth,edge,detail,mask:croppedMask,alphaCutout:hasAlphaCutout};
+  return{w:cw,h:ch,aspect:cw/ch,luminance:smooth,edge,detail,mask:croppedMask,silhouette,alphaCutout:hasAlphaCutout};
 }
 
 export function sampleMap(map,field,u,v){
