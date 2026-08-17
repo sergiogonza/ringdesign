@@ -18,7 +18,15 @@ function ringTexture(a,b){const A=p.textureAmount;switch(p.texture){case'voronoi
 function ringGeometry(rn,tn){const pos=[],idx=[],inner=p.diameter/2;for(let i=0;i<rn;i++){const a=i/rn*Math.PI*2,wave=p.mode==='classic'?0:Math.sin(a*(p.mode==='coral'?7:3)+p.seed)*p.flow*.28;for(let j=0;j<tn;j++){const b=j/tn*Math.PI*2,bt=b+a*p.twist*.2,q=(Math.cos(bt)+1)*.5,band=Math.max(p.minWall,p.width+wave*q+ringTexture(a,b)*q),r=inner+q*band,y=Math.sin(bt)*Math.max(.7,p.width*.42)+(p.mode==='coral'?Math.sin(a*5)*p.flow*.18*q:0);pos.push(r*Math.cos(a),y,r*Math.sin(a))}}for(let i=0;i<rn;i++)for(let j=0;j<tn;j++){const ni=(i+1)%rn,nj=(j+1)%tn,a=i*tn+j,b=ni*tn+j,c=ni*tn+nj,d=i*tn+nj;idx.push(a,b,d,b,c,d)}return makeGeometry(pos,idx)}
 
 function isSvg(file){return file.type==='image/svg+xml'||/\.svg$/i.test(file.name)}
-function loadImageUrl(url,maxSide,label){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{resolve(analyzeRasterImage(img,maxSide))}catch(e){reject(e)}};img.onerror=reject;img.src=url})}
+function loadImageUrl(url,maxSide,options={}){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{resolve(analyzeRasterImage(img,maxSide,options))}catch(e){reject(e)}};img.onerror=reject;img.src=url})}
+function normalizeSvgText(text){
+  const parser=new DOMParser(),doc=parser.parseFromString(text,'image/svg+xml'),root=doc.documentElement;
+  if(root.nodeName.toLowerCase()==='parsererror'||doc.querySelector('parsererror'))throw new Error('Invalid SVG');
+  // Keep the complete SVG tree: paths, groups, strokes, fills, transforms, masks and filters.
+  if(!root.getAttribute('xmlns'))root.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  // Preserve transparent background so every disconnected vector island survives analysis.
+  return new XMLSerializer().serializeToString(root);
+}
 async function analyzeSource(file){
   if(!file){toast('Choose PNG, JPG, WEBP or SVG');return}
   const svg=isSvg(file),raster=file.type.startsWith('image/');
@@ -26,29 +34,28 @@ async function analyzeSource(file){
   try{
     let map;
     if(svg){
-      // SVG remains the authoring source. We rasterize it only into a dense analysis map so
-      // vector curves enter the same watertight relief pipeline without losing their clean contour.
-      const text=await file.text();
-      const blob=new Blob([text],{type:'image/svg+xml'}),url=URL.createObjectURL(blob);
-      try{map=await loadImageUrl(url,900,'SVG')}finally{URL.revokeObjectURL(url)}
-      sourceKind='SVG VECTOR';
+      const text=normalizeSvgText(await file.text());
+      const blob=new Blob([text],{type:'image/svg+xml;charset=utf-8'}),url=URL.createObjectURL(blob);
+      try{map=await loadImageUrl(url,1600,{preserveAllComponents:true})}finally{URL.revokeObjectURL(url)}
+      sourceKind='SVG COMPLETE';
     }else{
       const url=URL.createObjectURL(file);
-      try{map=await loadImageUrl(url,460,'RASTER')}finally{URL.revokeObjectURL(url)}
-      sourceKind='RASTER';
+      try{map=await loadImageUrl(url,640)}finally{URL.revokeObjectURL(url)}
+      sourceKind='RASTER HQ';
     }
     imageMap=map;sourceName=file.name;p.piece='pendant';
-    $('#sourceState').textContent=`${file.name} · ${sourceKind} · ${map.alphaCutout?'alpha silhouette':'outer body'} · ${map.w}×${map.h}`;
-    rebuild();toast(svg?'SVG loaded · vector contour sampled at high resolution':'Image loaded · relief map ready');
-  }catch(error){console.error(error);toast(isSvg(file)?'Could not parse SVG':'Image analysis failed')}
+    const parts=map.componentCount||1;
+    $('#sourceState').textContent=`${file.name} · ${sourceKind} · ${parts} region${parts===1?'':'s'} · ${map.w}×${map.h}`;
+    rebuild();toast(svg?`SVG complete · ${parts} vector region${parts===1?'':'s'} preserved`:'Image loaded · high definition relief ready');
+  }catch(error){console.error(error);toast(isSvg(file)?'Could not parse complete SVG':'Image analysis failed')}
 }
 
-function placeholderMap(){const w=120,h=150,mask=new Uint8Array(w*h),luminance=new Float32Array(w*h).fill(.92),edge=new Float32Array(w*h),detail=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=(x-w/2)/(w*.47),dy=(y-h/2)/(h*.47);if(dx*dx+dy*dy<1)mask[y*w+x]=1}return{w,h,aspect:w/h,mask,luminance,edge,detail,alphaCutout:false}}
+function placeholderMap(){const w=120,h=150,mask=new Uint8Array(w*h),luminance=new Float32Array(w*h).fill(.92),edge=new Float32Array(w*h),detail=new Float32Array(w*h),silhouette=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=(x-w/2)/(w*.47),dy=(y-h/2)/(h*.47);if(dx*dx+dy*dy<1){mask[y*w+x]=1;silhouette[y*w+x]=1}}return{w,h,aspect:w/h,mask,luminance,edge,detail,silhouette,alphaCutout:false}}
 function clearModel(){while(model.children.length){const o=model.children.pop();o.geometry?.dispose()}}
-function rebuild(){clearModel();let geometry;if(p.piece==='pendant'){geometry=buildPendantGeometry(imageMap||placeholderMap(),p,150);camera.position.set(0,0,Math.max(55,p.pendantWidth*2.4));controls.target.set(0,0,p.pendantBase*.4)}else{geometry=ringGeometry(...QUALITY.preview);camera.position.set(0,18,62);controls.target.set(0,0,0)}mesh=new THREE.Mesh(geometry,material);model.add(mesh);metrics();syncUI()}
+function rebuild(){clearModel();let geometry;if(p.piece==='pendant'){geometry=buildPendantGeometry(imageMap||placeholderMap(),p,180);camera.position.set(0,0,Math.max(55,p.pendantWidth*2.4));controls.target.set(0,0,p.pendantBase*.4)}else{geometry=ringGeometry(...QUALITY.preview);camera.position.set(0,18,62);controls.target.set(0,0,0)}mesh=new THREE.Mesh(geometry,material);model.add(mesh);metrics();syncUI()}
 function metrics(){const v=validateMesh(mesh.geometry);$('#verts').textContent=mesh.geometry.attributes.position.count.toLocaleString();$('#tris').textContent=(mesh.geometry.index.count/3).toLocaleString();$('#checkClosed').textContent=v.closed?'PASS ✓':'CHECK';$('#checkEdges').textContent=`${v.boundary} / ${v.nonManifold}`;$('#checkBox').textContent=`${v.size.x.toFixed(1)} × ${v.size.y.toFixed(1)} × ${v.size.z.toFixed(1)} mm`;$('#pieceMetric').textContent=p.piece.toUpperCase();$('#sizeMetric').textContent=p.piece==='ring'?`Ø ${p.diameter.toFixed(2)} mm`:`${p.pendantWidth.toFixed(1)} × ${(p.pendantWidth/(imageMap?.aspect||.8)).toFixed(1)} mm · ${p.pendantBase.toFixed(1)} mm base`}
 function syncUI(){$('#ringTools').classList.toggle('hidden',p.piece!=='ring');$('#pendantTools').classList.toggle('hidden',p.piece!=='pendant');$$('[data-piece]').forEach(b=>b.classList.toggle('active',b.dataset.piece===p.piece));$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===p.mode));$$('[data-texture]').forEach(b=>b.classList.toggle('active',b.dataset.texture===p.texture));$$('[data-relief]').forEach(b=>b.classList.toggle('active',b.dataset.relief===p.relief));$('#modeChip').textContent=p.piece.toUpperCase();$('#activeStyle').textContent=p.piece==='ring'?`RING / ${p.mode.toUpperCase()}`:`PENDANT / ${p.relief.toUpperCase()}`;$$('input[type=range]').forEach(input=>{if(p[input.dataset.p]!=null)input.value=p[input.dataset.p];const label=input.previousElementSibling?.querySelector('span');if(label)label.textContent=['diameter','minWall'].includes(input.dataset.p)?Number(input.value).toFixed(2):input.value})}
-function productionMesh(){let geometry;if(p.piece==='pendant'){const q=$('#exportQuality').value==='ultra'?360:$('#exportQuality').value==='jewelry'?280:200;geometry=buildPendantGeometry(imageMap||placeholderMap(),p,q)}else geometry=ringGeometry(...QUALITY[$('#exportQuality').value]);return new THREE.Mesh(geometry,material)}
+function productionMesh(){let geometry;if(p.piece==='pendant'){const q=$('#exportQuality').value==='ultra'?520:$('#exportQuality').value==='jewelry'?380:260;geometry=buildPendantGeometry(imageMap||placeholderMap(),p,q)}else geometry=ringGeometry(...QUALITY[$('#exportQuality').value]);return new THREE.Mesh(geometry,material)}
 function download(name,data,type){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([data],{type}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function exportFile(kind){const production=productionMesh(),check=validateMesh(production.geometry);if(!check.closed){toast(`Export blocked · ${check.boundary} open / ${check.nonManifold} non-manifold`);production.geometry.dispose();return}const group=new THREE.Group();group.add(production);const name=($('#projectName').value||`${p.piece}-design`).trim();if(kind==='stl')download(name+'_mm.stl',new STLExporter().parse(group,{binary:true}),'model/stl');else download(name+'_mm.obj',`# ORGANICA OS\n# units: millimeters\n# source: ${sourceName||'parametric'}\n# source-type: ${sourceKind||'parametric'}\n`+new OBJExporter().parse(group),'text/plain');production.geometry.dispose();toast(`${kind.toUpperCase()} exported · watertight · mm`)}
 function saveProject(){const name=($('#projectName').value||`Jewel-${projects.length+1}`).trim();projects.unshift({id:Date.now(),name,date:new Date().toLocaleString(),params:{...p},source:sourceName,sourceKind});localStorage.setItem('organica-projects',JSON.stringify(projects));renderProjects();toast('Design saved')}
