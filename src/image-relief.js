@@ -25,9 +25,9 @@ function sample(field, w, h, x, y) {
   return field[y * w + x];
 }
 
-function largestComponent(mask, w, h) {
+function components(mask, w, h) {
   const seen = new Uint8Array(mask.length);
-  let best = [];
+  const all = [];
   const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
   for (let start = 0; start < mask.length; start++) {
     if (!mask[start] || seen[start]) continue;
@@ -44,10 +44,18 @@ function largestComponent(mask, w, h) {
         if(mask[nid]&&!seen[nid]){seen[nid]=1;stack.push(nid)}
       }
     }
-    if(component.length>best.length) best=component;
+    all.push(component);
   }
+  return all.sort((a,b)=>b.length-a.length);
+}
+
+function componentMask(mask,w,h,{preserveAll=false,minArea=0}={}){
+  const list=components(mask,w,h);
   const result=new Uint8Array(mask.length);
-  for(const id of best) result[id]=1;
+  if(!list.length)return result;
+  if(!preserveAll){for(const id of list[0])result[id]=1;return result}
+  const threshold=Math.max(2,minArea||Math.round(w*h*.000015));
+  for(const component of list){if(component.length<threshold)continue;for(const id of component)result[id]=1}
   return result;
 }
 
@@ -59,9 +67,8 @@ function majority(mask,w,h,passes=1){
       let n=0,total=0;
       for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){
         const sx=x+ox,sy=y+oy;
-        if(sx<0||sy<0||sx>=w||sy>=h) continue;
-        total++;
-        if(current[sy*w+sx])n++;
+        if(sx<0||sy<0||sx>=w||sy>=h)continue;
+        total++;if(current[sy*w+sx])n++;
       }
       next[y*w+x]=n>=Math.ceil(total*.5)?1:0;
     }
@@ -70,30 +77,24 @@ function majority(mask,w,h,passes=1){
   return current;
 }
 
-function enclosedBodyMask(lum, alpha, w, h, bgLum) {
-  const background = new Uint8Array(w*h);
-  const tolerance = Math.max(.035, Math.min(.13, Math.abs(bgLum-.5)*.08+.04));
+function enclosedBodyMask(lum,alpha,w,h,bgLum){
+  const background=new Uint8Array(w*h);
+  const tolerance=Math.max(.035,Math.min(.13,Math.abs(bgLum-.5)*.08+.04));
   for(let i=0;i<background.length;i++){
     const closeToBg=Math.abs(lum[i]-bgLum)<tolerance;
     const nearWhite=bgLum>.82&&lum[i]>.91;
     background[i]=alpha[i]<.08||(closeToBg||nearWhite)?1:0;
   }
-
   const exterior=new Uint8Array(w*h),stack=[];
   const push=id=>{if(id>=0&&id<w*h&&!exterior[id]&&background[id]){exterior[id]=1;stack.push(id)}};
-  for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}
-  for(let y=1;y<h-1;y++){push(y*w);push(y*w+w-1)}
-  while(stack.length){
-    const id=stack.pop(),x=id%w,y=Math.floor(id/w);
-    if(x>0)push(id-1);if(x<w-1)push(id+1);if(y>0)push(id-w);if(y<h-1)push(id+w);
-  }
-
-  const body=new Uint8Array(w*h);
-  for(let i=0;i<body.length;i++) body[i]=exterior[i]?0:1;
-  return majority(largestComponent(body,w,h),w,h,1);
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}for(let y=1;y<h-1;y++){push(y*w);push(y*w+w-1)}
+  while(stack.length){const id=stack.pop(),x=id%w,y=Math.floor(id/w);if(x>0)push(id-1);if(x<w-1)push(id+1);if(y>0)push(id-w);if(y<h-1)push(id+w)}
+  const body=new Uint8Array(w*h);for(let i=0;i<body.length;i++)body[i]=exterior[i]?0:1;
+  return majority(componentMask(body,w,h),w,h,1);
 }
 
-export function analyzeRasterImage(img,maxSide=460){
+export function analyzeRasterImage(img,maxSide=460,options={}){
+  const preserveAllComponents=!!options.preserveAllComponents;
   const ratio=img.width/img.height;
   const w=ratio>=1?maxSide:Math.max(112,Math.round(maxSide*ratio));
   const h=ratio>=1?Math.max(112,Math.round(maxSide/ratio)):maxSide;
@@ -111,9 +112,9 @@ export function analyzeRasterImage(img,maxSide=460){
   let mask;
   if(hasAlphaCutout){
     mask=new Uint8Array(w*h);
-    for(let i=0;i<mask.length;i++)mask[i]=alpha[i]>.16?1:0;
-    mask=majority(mask,w,h,1);
-    mask=largestComponent(mask,w,h);
+    for(let i=0;i<mask.length;i++)mask[i]=alpha[i]>.10?1:0;
+    mask=majority(mask,w,h,preserveAllComponents?0:1);
+    mask=componentMask(mask,w,h,{preserveAll:preserveAllComponents});
   }else{
     mask=enclosedBodyMask(lum,alpha,w,h,bgLum);
   }
@@ -121,40 +122,30 @@ export function analyzeRasterImage(img,maxSide=460){
   let minX=w,maxX=-1,minY=h,maxY=-1;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(mask[y*w+x]){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
   if(maxX<minX){minX=0;minY=0;maxX=w-1;maxY=h-1;mask.fill(1)}
-  const pad=4;minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);
+  const pad=5;minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);
   const cw=maxX-minX+1,ch=maxY-minY+1,croppedMask=new Uint8Array(cw*ch),croppedLum=new Float32Array(cw*ch);
   for(let y=0;y<ch;y++)for(let x=0;x<cw;x++){
     const src=(y+minY)*w+x+minX;
-    croppedMask[y*cw+x]=mask[src];
-    croppedLum[y*cw+x]=lum[src];
+    croppedMask[y*cw+x]=mask[src];croppedLum[y*cw+x]=lum[src];
   }
 
-  const maskFloat=new Float32Array(croppedMask.length);
-  for(let i=0;i<croppedMask.length;i++)maskFloat[i]=croppedMask[i];
-  // Soft silhouette drives sub-pixel contour projection in the mesh engine.
-  const silhouette=blur(maskFloat,cw,ch,2,2);
-
-  const fine=blur(croppedLum,cw,ch,1,1);
-  const smooth=blur(fine,cw,ch,2,2);
-  const coarse=blur(smooth,cw,ch,2,3);
+  const maskFloat=new Float32Array(croppedMask.length);for(let i=0;i<croppedMask.length;i++)maskFloat[i]=croppedMask[i];
+  const silhouette=blur(maskFloat,cw,ch,preserveAllComponents?1:2,2);
+  const fine=blur(croppedLum,cw,ch,1,1),smooth=blur(fine,cw,ch,2,2),coarse=blur(smooth,cw,ch,2,3);
   const edge=new Float32Array(cw*ch),detail=new Float32Array(cw*ch);
   for(let y=1;y<ch-1;y++)for(let x=1;x<cw-1;x++){
-    const gx=sample(fine,cw,ch,x+1,y)-sample(fine,cw,ch,x-1,y);
-    const gy=sample(fine,cw,ch,x,y+1)-sample(fine,cw,ch,x,y-1);
+    const gx=sample(fine,cw,ch,x+1,y)-sample(fine,cw,ch,x-1,y),gy=sample(fine,cw,ch,x,y+1)-sample(fine,cw,ch,x,y-1);
     edge[y*cw+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)*3.4);
     detail[y*cw+x]=Math.max(0,Math.min(1,(coarse[y*cw+x]-fine[y*cw+x])*4.8));
   }
-
-  return{w:cw,h:ch,aspect:cw/ch,luminance:smooth,edge,detail,mask:croppedMask,silhouette,alphaCutout:hasAlphaCutout};
+  const componentCount=components(croppedMask,cw,ch).length;
+  return{w:cw,h:ch,aspect:cw/ch,luminance:smooth,edge,detail,mask:croppedMask,silhouette,alphaCutout:hasAlphaCutout,preserveAllComponents,componentCount};
 }
 
 export function sampleMap(map,field,u,v){
   const fx=Math.max(0,Math.min(map.w-1,u*(map.w-1))),fy=Math.max(0,Math.min(map.h-1,v*(map.h-1)));
   const x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(map.w-1,x0+1),y1=Math.min(map.h-1,y0+1),tx=fx-x0,ty=fy-y0;
-  const f=map[field];
-  if(!f)return 0;
-  if(field==='mask')return f[Math.round(fy)*map.w+Math.round(fx)];
-  const a=f[y0*map.w+x0]*(1-tx)+f[y0*map.w+x1]*tx;
-  const b=f[y1*map.w+x0]*(1-tx)+f[y1*map.w+x1]*tx;
+  const f=map[field];if(!f)return 0;if(field==='mask')return f[Math.round(fy)*map.w+Math.round(fx)];
+  const a=f[y0*map.w+x0]*(1-tx)+f[y0*map.w+x1]*tx,b=f[y1*map.w+x0]*(1-tx)+f[y1*map.w+x1]*tx;
   return a*(1-ty)+b*ty;
 }
